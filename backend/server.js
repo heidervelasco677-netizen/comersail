@@ -67,6 +67,7 @@ app.post('/api/compras', async (req, res) => {
     }
 });
 
+
 // Iniciar servidor
 app.listen(PORT, () => {
     console.log(`servidor corriendo en http://localhost:${PORT}`);
