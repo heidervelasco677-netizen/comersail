@@ -5,8 +5,8 @@ const Compra = require('../models/Compra');
 // obtener todas las compras (GET)
 router.get('/', async (req, res) => {
     try {
-        const compra = await Compra.findById();
-        res.json(compras);
+        const compra = await Compra.find();
+        res.json(Compra);
     } catch (error) {
         res.status(500).json({ mensaje: 'Error al obtener las compras', error: error.message });
     }
