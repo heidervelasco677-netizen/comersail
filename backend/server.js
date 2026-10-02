@@ -18,6 +18,7 @@ app.get('/api/productos', (req, res) => {
     res.json(productos);
 });
 
+
 // Conexion a mongoDB Atlas
 mongoose.connect(process.env.MONGODB_URI)
 .then(() => console.log( 'Conectado exitosamente a MongoDB Atlas'))
@@ -31,6 +32,10 @@ app.get('/', (req, res) => {
 // ================================
 // RUTAS DE LA API CON MONGOOSE
 // ================================
+
+// Importar en integrar rutas de autenticacion
+const authRoutes = require('./routes/auth.Routes');
+app.use('/api/auth', authRoutes);
 
 // 1 obtener todas las compras
 app.get('/api/compras', async (req, res) => {
