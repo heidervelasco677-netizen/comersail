@@ -72,6 +72,33 @@ app.post('/api/compras', async (req, res) => {
     }
 });
 
+// actualizar compra por ID 
+app.put('/api/compras/:id', async (req, res) => {
+    try {
+        const { cliente, producto, peso, precioKG } = req.body;
+
+        // recalcular valores si se actualizan
+        let datosAActualizar = req.body;
+        if (peso && precioKG) {
+            const valorExacto = peso * precioKG;
+            const totalRedondeado = matchMedia.round(valorExacto / 100) * 100;
+            datosAActualizar = {
+                ...req.body,
+                valor: valorExacto,
+                valorTotal: totalRedondeado
+            };
+        }
+
+        const compraActualizada = await Compra.findByIdAndUpdate(
+            req.params.id,
+            datosAActualizar,
+            { new: true, runValidators: true }
+        );
+
+        if ()
+    }
+})
+
 
 // Iniciar servidor
 app.listen(PORT, () => {
