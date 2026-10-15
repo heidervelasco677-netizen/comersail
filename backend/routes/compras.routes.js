@@ -1,6 +1,25 @@
 const express = require('express');
 const router = express.Router();
 const Compra = require('../models/Compra');
+const verificarToken =require('../middleware/auth');
+const verificarAdmin = require('./middleware/admin');
+
+// valor exacto y total redondeado a la cxentena mas cerca
+function calcularValores(peso, precioKG) {
+    const valor = peso * precioKG;
+    const valorTotal = Math.round(valor / 100) * 100;
+    return { valor, valorTotal };
+}
+
+function responderError(res, err) {
+    if (err.name === 'castError') {
+        return res.status(400).json({ error: 'ID no valido' };
+    }
+    if (err.name === 'ValidationError') {
+        return res.status(400).json({ error: err.message });
+    }
+    res.status(500).json({ error: err.message});
+}
 
 // obtener todas las compras (GET)
 router.get('/', async (req, res) => {
@@ -58,5 +77,7 @@ router.delete('/:id', async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
+
+
 
 module.exports = router;
