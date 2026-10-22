@@ -35,69 +35,10 @@ app.get('/', (req, res) => {
 
 // Importar en integrar rutas de autenticacion
 const authRoutes = require('./routes/auth.Routes');
+const comprasRoutes = require('./routes/compras.routes');
 app.use('/api/auth', authRoutes);
 
-// 1 obtener todas las compras
-app.get('/api/compras', async (req, res) => {
-    try {
-        const compras = await Compra.find();
-        res.json(compras);
-    } catch (error) {
-        res.status(500).json({ mensaje: 'Error al obtener las compras', error: error.message });
-    }
-});
-
-// 2 registrar una nueva compra 
-app.post('/api/compras', async (req, res) => {
-    try {
-        const { cliente, producto, peso, precioKG } = req.body;
-
-        // calcular el valor exacto y el total redondeado
-        const valorExacto = peso * precioKG;
-        const totalRedondeado = Math.round(valorExacto / 100) * 100;
-
-        const nuevaCompra = new Compra({
-            cliente,
-            producto,
-            peso,
-            precioKG,
-            valor: valorExacto,
-            valorTotal: totalRedondeado
-        });
-
-        const compraGuardada = await nuevaCompra.save();
-        res.status(201).json({ mensaje: 'Guardada exitosamente', data: compraGuardada });
-    } catch (error) {
-        res.status(400).json({ mensaje: 'Error', error: error.message });
-    }
-});
-
-// actualizar compra por ID 
-app.put('/api/compras/:id', async (req, res) => {
-    try {
-        const { cliente, producto, peso, precioKG } = req.body;
-
-        // recalcular valores si se actualizan
-        let datosAActualizar = req.body;
-        if (peso && precioKG) {
-            const valorExacto = peso * precioKG;
-            const totalRedondeado = matchMedia.round(valorExacto / 100) * 100;
-            datosAActualizar = {
-                ...req.body,
-                valor: valorExacto,
-                valorTotal: totalRedondeado
-            };
-        }
-
-        const compraActualizada = await Compra.findByIdAndUpdate(
-            req.params.id,
-            datosAActualizar,
-            { new: true, runValidators: true }
-        );
-
-        if ()
-    }
-})
+app.use('/api/compras', comprasRoutes);
 
 
 // Iniciar servidor
