@@ -1,8 +1,11 @@
 const express = require('express');
 const router = express.Router();
 const Usuario = require('../models/Usuario');
+
+
 const verificarToken = require('../middleware/auth');
 const verificarAdmin = require('../middleware/admin');
+const verificarSuperAdmin = require('../middleware/superAdmin');
 
 const ROLES = ['cliente', 'admin'];
 
@@ -51,6 +54,22 @@ router.put('/:id/rol', verificarToken, verificarAdmin, async (req, res) => {
         if (!usuario) return res.status(404).json({ error: 'Usuario no encontrado' });
 
         res.json({ mensaje: 'Rol actualizado exitosamente', data: usuario });
+    } catch (err) {
+        responderError(res, err);
+    }
+});
+
+// DELETE /api/usuarios/:id - eliminar un usuario (solo superadmin)
+router.delete('/:id', verificarToken, verificarSuperAdmin, async (req, res) => {
+    try {
+        if (req.params.id === req.usuario.id) {
+            return res.status(400).json({ error: 'No puedes eliminar tu propia cuenta' });
+        }
+
+        const usuario = await Usuario.findByIdAndDelete(req.params.id);
+        if (!usuario) return res.status(404).json({ error: 'Usuario no encontrado'});
+
+        res.json({ mensaje: 'Usuario eliminado correctamente' });
     } catch (err) {
         responderError(res, err);
     }

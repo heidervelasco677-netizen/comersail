@@ -41,6 +41,8 @@ app.use('/api/auth', authRoutes);
 
 app.use('/api/compras', comprasRoutes);
 
+app.use('/api/usuarios', usuariosRoutes);
+
 
 // Iniciar servidor
 app.listen(PORT, () => {
