@@ -30,13 +30,12 @@ router.post('/registro', async (req, res) => {
             return res.status(400).json({ mensaje: 'El correo ya está registrado' });
         }
 
-        const salt = await bcrypt.genSalt(10);
-        const passwordHashed = await bcrypt.hash(password, salt);
-
+        // La contraseña se envía en texto plano: el modelo Usuario la encripta al guardar.
+        // (Si se encripta aquí también, queda encriptada dos veces y el login nunca coincide.)
         const nuevoUsuario = new Usuario({
             nombre,
             email: emailNormalizado,
-            password: passwordHashed,
+            password,
             departamento,
             municipio,
             rol: 'cliente'

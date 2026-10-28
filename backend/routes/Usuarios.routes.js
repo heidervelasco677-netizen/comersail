@@ -2,12 +2,11 @@ const express = require('express');
 const router = express.Router();
 const Usuario = require('../models/Usuario');
 
-
 const verificarToken = require('../middleware/auth');
 const verificarAdmin = require('../middleware/admin');
 const verificarSuperAdmin = require('../middleware/superAdmin');
 
-const ROLES = ['cliente', 'admin'];
+const ROLES = ['cliente', 'admin', 'superAdmin'];
 
 function responderError(res, err) {
     if (err.name === 'CastError') {
@@ -19,7 +18,7 @@ function responderError(res, err) {
     res.status(500).json({ error: err.message });
 }
 
-// GET /api/usuarios — listar usuarios (solo admin), sin contraseñas
+// GET /api/usuarios — listar usuarios (admin y superAdmin), sin contraseñas
 router.get('/', verificarToken, verificarAdmin, async (req, res) => {
     try {
         const usuarios = await Usuario.find()
@@ -31,18 +30,18 @@ router.get('/', verificarToken, verificarAdmin, async (req, res) => {
     }
 });
 
-// PUT /api/usuarios/:id/rol — cambiar el rol de un usuario (solo admin)
-router.put('/:id/rol', verificarToken, verificarAdmin, async (req, res) => {
+// PUT /api/usuarios/:id/rol — cambiar el rol de un usuario (SOLO superAdmin)
+router.put('/:id/rol', verificarToken, verificarSuperAdmin, async (req, res) => {
     try {
         const { rol } = req.body;
 
         if (!ROLES.includes(rol)) {
-            return res.status(400).json({ error: 'El rol debe ser cliente o admin' });
+            return res.status(400).json({ error: 'El rol debe ser cliente, admin o superAdmin' });
         }
 
-        // Evita que el único admin se quite el rol a sí mismo y quede sin acceso
-        if (req.params.id === req.usuario.id && rol !== 'admin') {
-            return res.status(400).json({ error: 'No puedes quitarte tu propio rol de admin' });
+        // Nadie cambia su propio rol: así el sistema nunca se queda sin superAdmin
+        if (req.params.id === req.usuario.id) {
+            return res.status(400).json({ error: 'No puedes cambiar tu propio rol' });
         }
 
         const usuario = await Usuario.findByIdAndUpdate(
@@ -59,7 +58,7 @@ router.put('/:id/rol', verificarToken, verificarAdmin, async (req, res) => {
     }
 });
 
-// DELETE /api/usuarios/:id - eliminar un usuario (solo superadmin)
+// DELETE /api/usuarios/:id - eliminar un usuario (solo superAdmin)
 router.delete('/:id', verificarToken, verificarSuperAdmin, async (req, res) => {
     try {
         if (req.params.id === req.usuario.id) {
@@ -67,7 +66,7 @@ router.delete('/:id', verificarToken, verificarSuperAdmin, async (req, res) => {
         }
 
         const usuario = await Usuario.findByIdAndDelete(req.params.id);
-        if (!usuario) return res.status(404).json({ error: 'Usuario no encontrado'});
+        if (!usuario) return res.status(404).json({ error: 'Usuario no encontrado' });
 
         res.json({ mensaje: 'Usuario eliminado correctamente' });
     } catch (err) {

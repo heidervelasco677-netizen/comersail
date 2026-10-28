@@ -1,7 +1,6 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const router = express.Router();
-console.log('cargadas rutas nuevas de compras:', __filename);
 
 const Compra = require('../models/Compra');
 const Usuario = require('../models/Usuario');
@@ -82,7 +81,7 @@ async function buscarCliente(clienteId, clienteEmail) {
         cliente = await Usuario.findById(clienteId);
     } else if (clienteEmail) {
         cliente = await Usuario.findOne({
-            email: clienteEmail.toLowerCase()
+            email: String(clienteEmail).toLowerCase().trim()
         });
     } else {
         throw new Error('Debes enviar clienteId o clienteEmail');
@@ -101,7 +100,7 @@ async function buscarCliente(clienteId, clienteEmail) {
 
 // GET todas las compras
 // Cliente: solo ve sus compras
-// Admin y superadmin: ven todas
+// Admin y superAdmin: ven todas
 router.get('/', verificarToken, async (req, res) => {
     try {
         const usuarioId = obtenerIdUsuario(req);
@@ -138,9 +137,10 @@ router.get('/:id', verificarToken, async (req, res) => {
             return res.status(404).json({ error: 'Compra no encontrada' });
         }
 
+        // compra.cliente puede ser null si ese usuario fue eliminado
         if (
             req.usuario.rol === 'cliente' &&
-            compra.cliente._id.toString() !== usuarioId.toString()
+            (!compra.cliente || compra.cliente._id.toString() !== usuarioId.toString())
         ) {
             return res.status(403).json({
                 error: 'No puedes ver compras de otro cliente'
@@ -154,11 +154,8 @@ router.get('/:id', verificarToken, async (req, res) => {
 });
 
 // POST registrar una compra
-// Solo admin y superadmin
+// Solo admin y superAdmin
 router.post('/', verificarToken, verificarAdmin, async (req, res) => {
-    console.log('Entro a la ruta nueva de compras');
-    console.log(req.body);
-    
     try {
         const {
             clienteId,
@@ -209,7 +206,7 @@ router.post('/', verificarToken, verificarAdmin, async (req, res) => {
 });
 
 // PUT actualizar una compra
-// Solo admin y superadmin
+// Solo admin y superAdmin
 router.put('/:id', verificarToken, verificarAdmin, async (req, res) => {
     try {
         const compra = await Compra.findById(req.params.id);
@@ -280,7 +277,7 @@ router.put('/:id', verificarToken, verificarAdmin, async (req, res) => {
 });
 
 // DELETE eliminar una compra
-// Solo admin y superadmin
+// Solo admin y superAdmin
 router.delete('/:id', verificarToken, verificarAdmin, async (req, res) => {
     try {
         const compraEliminada = await Compra.findByIdAndDelete(req.params.id);
