@@ -30,8 +30,6 @@ router.post('/registro', async (req, res) => {
             return res.status(400).json({ mensaje: 'El correo ya está registrado' });
         }
 
-        // La contraseña se envía en texto plano: el modelo Usuario la encripta al guardar.
-        // (Si se encripta aquí también, queda encriptada dos veces y el login nunca coincide.)
         const nuevoUsuario = new Usuario({
             nombre,
             email: emailNormalizado,
@@ -54,7 +52,7 @@ router.post('/registro', async (req, res) => {
     }
 });
 
-// Login
+// Login — verifica credenciales y rechaza cuentas bloqueadas
 router.post('/login', async (req, res) => {
     try {
         const { email, password } = req.body;
@@ -66,6 +64,12 @@ router.post('/login', async (req, res) => {
         const usuario = await Usuario.findOne({ email: email.toLowerCase().trim() });
         if (!usuario) {
             return res.status(400).json({ mensaje: 'Credenciales inválidas' });
+        }
+
+        if (usuario.activo === false) {
+            return res.status(403).json({
+                mensaje: 'Tu cuenta está bloqueada. Habla con el administrador.',
+            });
         }
 
         const passwordValido = await bcrypt.compare(password, usuario.password);

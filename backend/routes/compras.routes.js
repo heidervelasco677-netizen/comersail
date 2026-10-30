@@ -1,298 +1,163 @@
+// routes/compras.routes.js — crear una compra al campesino
 const express = require('express');
 const mongoose = require('mongoose');
 const router = express.Router();
 
 const Compra = require('../models/Compra');
-const Usuario = require('../models/Usuario');
-
+const Campesino = require('../models/campesino');
 const verificarToken = require('../middleware/auth');
-const verificarAdmin = require('../middleware/admin');
+const verificarUsuario = require('../middleware/usuario'); // usuario, admin o superAdmin
 
-// valor exacto y total redondeado a la centena más cercana
-function calcularValores(peso, precioKG) {
-    const valor = peso * precioKG;
-    const valorTotal = Math.round(valor / 100) * 100;
+// Busca al campesino por id/documento; si no existe por documento, lo crea automáticamente
+async function buscarOCrearCampesino(campesinoId, campesinoDocumento, campesinoNombre, municipio, telefono) {
+  let campesino = null;
 
-    return { valor, valorTotal };
-}
-
-function obtenerIdUsuario(req) {
-    return req.usuario.id || req.usuario._id;
-}
-
-function responderError(res, err) {
-    if (err.name === 'CastError') {
-        return res.status(400).json({ error: 'ID no válido' });
+  if (campesinoId) {
+    if (!mongoose.Types.ObjectId.isValid(campesinoId)) {
+      throw new Error("campesinoId inválido");
     }
+    campesino = await Campesino.findById(campesinoId);
+  } else if (campesinoDocumento) {
+    const docLimpio = String(campesinoDocumento).trim();
+    campesino = await Campesino.findOne({ documento: docLimpio });
 
-    if (err.name === 'ValidationError') {
-        return res.status(400).json({ error: err.message });
+    // Si no existe, lo crea automáticamente sin requerir login/usuario
+    if (!campesino) {
+      campesino = new Campesino({
+        documento: docLimpio,
+        nombre: campesinoNombre || `Campesino (${docLimpio})`,
+        telefono: telefono || '',
+        municipio: municipio || 'Garzón'
+      });
+      await campesino.save();
     }
+  } else {
+    throw new Error("Debes enviar campesinoId o campesinoDocumento");
+  }
 
-    return res.status(500).json({ error: err.message });
+  if (campesino.activo === false) throw new Error("El campesino está inactivo");
+  return campesino;
 }
 
 function normalizarProductos(productos) {
-    if (!Array.isArray(productos) || productos.length === 0) {
-        throw new Error('Debes enviar al menos un producto');
+  if (!Array.isArray(productos) || productos.length === 0) {
+    throw new Error('Debes enviar al menos un producto');
+  }
+
+  return productos.map((item, index) => {
+    const producto = item.producto;
+    const pesoKg = Number(item.pesoKg);
+    const precioKg = Number(item.precioKg);
+
+    if (!['cafe', 'cacao'].includes(producto)) {
+      throw new Error(`El producto ${index + 1} debe ser cafe o cacao`);
+    }
+    if (Number.isNaN(pesoKg) || pesoKg <= 0) {
+      throw new Error(`El peso del producto ${index + 1} debe ser mayor a 0`);
+    }
+    if (Number.isNaN(precioKg) || precioKg <= 0) {
+      throw new Error(`El precio/kg del producto ${index + 1} debe ser mayor a 0`);
     }
 
-    return productos.map((item, index) => {
-        const producto = item.producto;
-        const peso = Number(item.peso);
-        const precioKG = Number(item.precioKG);
+    return { producto, pesoKg, precioKg, valor: Math.round(pesoKg * precioKg) };
+  });
+}
 
-        if (!producto) {
-            throw new Error(`El producto ${index + 1} necesita nombre`);
-        }
+// POST: el usuario de caja registra la compra al campesino
+router.post('/', verificarToken, verificarUsuario, async (req, res) => {
+  try {
+    const { 
+      campesinoId, 
+      campesinoDocumento, 
+      campesinoNombre, 
+      municipio, 
+      telefono, 
+      productos, 
+      estado, 
+      medioPago, 
+      observaciones, 
+      fecha, 
+      hora 
+    } = req.body;
 
-        if (!['cafe', 'cacao'].includes(producto)) {
-            throw new Error(`El producto ${index + 1} debe ser cafe o cacao`);
-        }
+    const campesino = await buscarOCrearCampesino(campesinoId, campesinoDocumento, campesinoNombre, municipio, telefono);
+    const normalizados = normalizarProductos(productos);
+    const valor = normalizados.reduce((sum, p) => sum + p.valor, 0);
 
-        if (Number.isNaN(peso) || peso <= 0) {
-            throw new Error(`El peso del producto ${index + 1} debe ser mayor a 0`);
-        }
-
-        if (Number.isNaN(precioKG) || precioKG <= 0) {
-            throw new Error(`El precioKG del producto ${index + 1} debe ser mayor a 0`);
-        }
-
-        const { valor, valorTotal } = calcularValores(peso, precioKG);
-
-        return {
-            producto,
-            peso,
-            precioKG,
-            valor,
-            valorTotal
-        };
+    const compra = await Compra.create({
+      campesino: campesino._id,
+      registradoPor: req.usuario.id || req.usuario._id,
+      productos: normalizados,
+      valor,
+      valorTotal: Math.round(valor / 100) * 100,
+      estado: estado || 'pendiente',
+      medioPago: medioPago || 'efectivo',
+      observaciones: observaciones || '',
+      fecha: fecha ? new Date(fecha) : new Date(),
+      hora,
     });
-}
 
-async function buscarCliente(clienteId, clienteEmail) {
-    let cliente = null;
+    const completa = await Compra.findById(compra._id)
+      .populate('campesino', 'nombre documento telefono municipio')
+      .populate('registradoPor', 'nombre email rol');
 
-    if (clienteId) {
-        if (!mongoose.Types.ObjectId.isValid(clienteId)) {
-            throw new Error('clienteId inválido');
-        }
+    res.status(201).json({ mensaje: 'Compra registrada exitosamente', data: completa });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
 
-        cliente = await Usuario.findById(clienteId);
-    } else if (clienteEmail) {
-        cliente = await Usuario.findOne({
-            email: String(clienteEmail).toLowerCase().trim()
-        });
-    } else {
-        throw new Error('Debes enviar clienteId o clienteEmail');
-    }
-
-    if (!cliente) {
-        throw new Error('Cliente no encontrado');
-    }
-
-    if (cliente.rol !== 'cliente') {
-        throw new Error('El usuario seleccionado no tiene rol cliente');
-    }
-
-    return cliente;
-}
-
-// GET todas las compras
-// Cliente: solo ve sus compras
-// Admin y superAdmin: ven todas
+// GET: usuario ve las que registró; admin y superAdmin ven todas
 router.get('/', verificarToken, async (req, res) => {
-    try {
-        const usuarioId = obtenerIdUsuario(req);
+  try {
+    const filtro =
+      req.usuario.rol === 'usuario' ? { registradoPor: req.usuario.id || req.usuario._id } : {};
 
-        const filtro =
-            req.usuario.rol === 'cliente'
-                ? { cliente: usuarioId }
-                : {};
+    const compras = await Compra.find(filtro)
+      .populate('campesino', 'nombre documento telefono municipio')
+      .populate('registradoPor', 'nombre email rol')
+      .sort({ fecha: -1 });
 
-        const compras = await Compra.find(filtro)
-            .populate('cliente', 'nombre email rol')
-            .populate('creadoPor', 'nombre email rol')
-            .sort({ createdAt: -1 });
-
-        res.json({
-            total: compras.length,
-            compras
-        });
-    } catch (err) {
-        responderError(res, err);
-    }
+    res.json({ total: compras.length, compras });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-// GET una compra por ID
-router.get('/:id', verificarToken, async (req, res) => {
-    try {
-        const usuarioId = obtenerIdUsuario(req);
+// PUT: marcar pagada o corregir datos (usuario, admin y superAdmin)
+router.put('/:id', verificarToken, verificarUsuario, async (req, res) => {
+  try {
+    const compra = await Compra.findById(req.params.id);
+    if (!compra) return res.status(404).json({ error: 'Compra no encontrada' });
 
-        const compra = await Compra.findById(req.params.id)
-            .populate('cliente', 'nombre email rol')
-            .populate('creadoPor', 'nombre email rol');
+    const { 
+      campesinoId, 
+      campesinoDocumento, 
+      campesinoNombre, 
+      productos, 
+      estado, 
+      medioPago, 
+      observaciones, 
+      fecha, 
+      hora 
+    } = req.body;
 
-        if (!compra) {
-            return res.status(404).json({ error: 'Compra no encontrada' });
-        }
-
-        // compra.cliente puede ser null si ese usuario fue eliminado
-        if (
-            req.usuario.rol === 'cliente' &&
-            (!compra.cliente || compra.cliente._id.toString() !== usuarioId.toString())
-        ) {
-            return res.status(403).json({
-                error: 'No puedes ver compras de otro cliente'
-            });
-        }
-
-        res.json(compra);
-    } catch (err) {
-        responderError(res, err);
+    if (campesinoId || campesinoDocumento) {
+      const campesino = await buscarOCrearCampesino(campesinoId, campesinoDocumento, campesinoNombre);
+      compra.campesino = campesino._id;
     }
-});
+    if (productos) compra.productos = normalizarProductos(productos);
+    if (estado !== undefined) compra.estado = estado;
+    if (medioPago !== undefined) compra.medioPago = medioPago;
+    if (observaciones !== undefined) compra.observaciones = observaciones;
+    if (fecha !== undefined) compra.fecha = new Date(fecha);
+    if (hora !== undefined) compra.hora = hora;
 
-// POST registrar una compra
-// Solo admin y superAdmin
-router.post('/', verificarToken, verificarAdmin, async (req, res) => {
-    try {
-        const {
-            clienteId,
-            clienteEmail,
-            productos,
-            estado,
-            observaciones,
-            fecha,
-            hora
-        } = req.body;
-
-        const cliente = await buscarCliente(clienteId, clienteEmail);
-        const productosNormalizados = normalizarProductos(productos);
-
-        const valor = productosNormalizados.reduce((sum, item) => {
-            return sum + item.valor;
-        }, 0);
-
-        const valorTotal = Math.round(valor / 100) * 100;
-
-        const nuevaCompra = new Compra({
-            cliente: cliente._id,
-            creadoPor: obtenerIdUsuario(req),
-            productos: productosNormalizados,
-            valor,
-            valorTotal,
-            estado: estado || 'pagada',
-            observaciones: observaciones || '',
-            fecha: fecha ? new Date(fecha) : new Date(),
-            hora
-        });
-
-        const compraGuardada = await nuevaCompra.save();
-
-        const compraCompleta = await Compra.findById(compraGuardada._id)
-            .populate('cliente', 'nombre email rol')
-            .populate('creadoPor', 'nombre email rol');
-
-        res.status(201).json({
-            mensaje: 'Guardada exitosamente',
-            data: compraCompleta
-        });
-    } catch (err) {
-        res.status(400).json({
-            error: err.message
-        });
-    }
-});
-
-// PUT actualizar una compra
-// Solo admin y superAdmin
-router.put('/:id', verificarToken, verificarAdmin, async (req, res) => {
-    try {
-        const compra = await Compra.findById(req.params.id);
-
-        if (!compra) {
-            return res.status(404).json({ error: 'Compra no encontrada' });
-        }
-
-        const {
-            clienteId,
-            clienteEmail,
-            productos,
-            estado,
-            observaciones,
-            fecha,
-            hora
-        } = req.body;
-
-        if (clienteId || clienteEmail) {
-            const cliente = await buscarCliente(clienteId, clienteEmail);
-            compra.cliente = cliente._id;
-        }
-
-        if (productos) {
-            const productosNormalizados = normalizarProductos(productos);
-
-            const valor = productosNormalizados.reduce((sum, item) => {
-                return sum + item.valor;
-            }, 0);
-
-            const valorTotal = Math.round(valor / 100) * 100;
-
-            compra.productos = productosNormalizados;
-            compra.valor = valor;
-            compra.valorTotal = valorTotal;
-        }
-
-        if (estado !== undefined) {
-            compra.estado = estado;
-        }
-
-        if (observaciones !== undefined) {
-            compra.observaciones = observaciones;
-        }
-
-        if (fecha !== undefined) {
-            compra.fecha = new Date(fecha);
-        }
-
-        if (hora !== undefined) {
-            compra.hora = hora;
-        }
-
-        const compraActualizada = await compra.save();
-
-        await compraActualizada.populate('cliente', 'nombre email rol');
-        await compraActualizada.populate('creadoPor', 'nombre email rol');
-
-        res.json({
-            mensaje: 'Actualizada exitosamente',
-            data: compraActualizada
-        });
-    } catch (err) {
-        res.status(400).json({
-            error: err.message
-        });
-    }
-});
-
-// DELETE eliminar una compra
-// Solo admin y superAdmin
-router.delete('/:id', verificarToken, verificarAdmin, async (req, res) => {
-    try {
-        const compraEliminada = await Compra.findByIdAndDelete(req.params.id);
-
-        if (!compraEliminada) {
-            return res.status(404).json({ error: 'Compra no encontrada' });
-        }
-
-        res.json({
-            mensaje: 'Eliminada correctamente',
-            data: compraEliminada
-        });
-    } catch (err) {
-        responderError(res, err);
-    }
+    await compra.save(); // recalcula valor y valorTotal
+    res.json({ mensaje: 'Actualizada exitosamente', data: compra });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
 });
 
 module.exports = router;

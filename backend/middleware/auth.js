@@ -1,20 +1,20 @@
+// middleware/auth.js
 const jwt = require('jsonwebtoken');
 
-// verifica que la peticion traiga un token valido
 function verificarToken(req, res, next) {
-    const authHeader = req.headers.authorization;
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1]; // Extrae el token del formato "Bearer <token>"
 
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return res.status(401).json({ error: 'Token no proporcionado' });
+    if (!token) {
+        return res.status(401).json({ error: 'Token de autenticación no proporcionado' });
     }
 
-    const token = authHeader.split(' ')[1];
-
     try {
-        req.usuario = jwt.verify(token, process.env.JWT_SECRET);
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        req.usuario = decoded; // Inyecta los datos del usuario decodificados (id, rol)
         next();
     } catch (err) {
-        res.status(401).json({ error: 'Token invalido o expirado' });
+        return res.status(403).json({ error: 'Token inválido o expirado' });
     }
 }
 

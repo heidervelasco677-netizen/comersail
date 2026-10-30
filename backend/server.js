@@ -13,11 +13,7 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-// Ruta get /api/productos
-app.get('/api/productos', (req, res) => {
-    const productos = require('../frontend/data/productos.json');
-    res.json(productos);
-});
+
 
 
 // Conexion a mongoDB Atlas
